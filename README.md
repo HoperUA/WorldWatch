@@ -46,6 +46,8 @@ dotnet build -c Release
 
 ## Standalone .exe (без встановленого .NET)
 
+Скачати .exe з GitHub https://github.com/hoperswork-prog/WorldWatch/releases
+
 Зібрати один самодостатній виконуваний файл:
 
 ```bash
@@ -75,13 +77,6 @@ bin/Release/net10.0-windows/win-x64/publish/
 Подвійний клік по іконці трею показує/ховає всі годинники одразу.
 
 Налаштування зберігаються у `%APPDATA%\WorldWatch\settings.json`.
-
-## Обмеження
-
-Як і будь-який звичайний topmost-оверлей, WorldWatch видно поверх вікон у режимі
-*borderless windowed*. Гра в *exclusive fullscreen* віддає екран собі повністю й може
-перекривати оверлей — це обмеження Windows (саме тому Steam використовує власний
-хук-оверлей). Для більшості сучасних ігор у безрамковому режимі все працює.
 
 ## Технології
 
