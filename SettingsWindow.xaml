@@ -1,0 +1,74 @@
+<Window x:Class="WorldWatch.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Налаштування годинника"
+        Width="360"
+        SizeToContent="Height"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen"
+        Topmost="True">
+
+    <Grid Margin="16">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Grid.Column="0" Text="Часовий пояс" VerticalAlignment="Center" Margin="0,0,10,8" />
+        <ComboBox  Grid.Row="0" Grid.Column="1" x:Name="ZoneCombo" Margin="0,0,0,8"
+                   SelectionChanged="ZoneCombo_SelectionChanged" />
+
+        <TextBlock Grid.Row="1" Grid.Column="0" Text="Шрифт" VerticalAlignment="Center" Margin="0,0,10,8" />
+        <ComboBox  Grid.Row="1" Grid.Column="1" x:Name="FontCombo" Margin="0,0,0,8"
+                   SelectionChanged="FontCombo_SelectionChanged" />
+
+        <TextBlock Grid.Row="2" Grid.Column="0" Text="Розмір" VerticalAlignment="Center" Margin="0,0,10,8" />
+        <Slider    Grid.Row="2" Grid.Column="1" x:Name="SizeSlider" Minimum="12" Maximum="200"
+                   Margin="0,0,0,8" VerticalAlignment="Center"
+                   ValueChanged="SizeSlider_ValueChanged" />
+
+        <TextBlock Grid.Row="3" Grid.Column="0" Text="Прозорість" VerticalAlignment="Center" Margin="0,0,10,8" />
+        <Slider    Grid.Row="3" Grid.Column="1" x:Name="OpacitySlider" Minimum="0.1" Maximum="1.0"
+                   Margin="0,0,0,8" VerticalAlignment="Center"
+                   ValueChanged="OpacitySlider_ValueChanged" />
+
+        <TextBlock Grid.Row="4" Grid.Column="0" Text="Колір" VerticalAlignment="Center" Margin="0,0,10,8" />
+        <Button    Grid.Row="4" Grid.Column="1" x:Name="ColorButton" Content="Вибрати колір…"
+                   Margin="0,0,0,8" Padding="8,4" HorizontalAlignment="Left"
+                   Click="ColorButton_Click" />
+
+        <TextBlock Grid.Row="5" Grid.Column="0" Text="Мітка" VerticalAlignment="Center" Margin="0,0,10,8" />
+        <StackPanel Grid.Row="5" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,8">
+            <CheckBox x:Name="LabelCheck" Content="Показувати" VerticalAlignment="Center"
+                      Margin="0,0,10,0" Click="Toggle_Click" />
+            <TextBox  x:Name="LabelText" Width="120" VerticalAlignment="Center"
+                      TextChanged="LabelText_TextChanged" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="6" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,8">
+            <CheckBox x:Name="Use24Check" Content="24 год" Margin="0,0,14,0" Click="Toggle_Click" />
+            <CheckBox x:Name="SecondsCheck" Content="Секунди" Margin="0,0,14,0" Click="Toggle_Click" />
+            <CheckBox x:Name="BoldCheck" Content="Жирний" Click="Toggle_Click" />
+        </StackPanel>
+
+        <CheckBox  Grid.Row="7" Grid.Column="1" x:Name="LockCheck" Content="Зафіксувати позицію"
+                   Margin="0,0,0,12" Click="Toggle_Click" />
+
+        <StackPanel Grid.Row="8" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="DeleteButton" Content="Видалити" Margin="0,0,8,0" Padding="10,4"
+                    Foreground="DarkRed" Click="DeleteButton_Click" />
+            <Button x:Name="CloseButton" Content="Закрити" Padding="10,4" Click="CloseButton_Click" />
+        </StackPanel>
+    </Grid>
+</Window>
