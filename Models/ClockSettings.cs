@@ -19,6 +19,15 @@ public class ClockSettings
     /// <summary>Window opacity 0.1 .. 1.0.</summary>
     public double Opacity { get; set; } = 0.9;
 
+    /// <summary>When true a colored panel is drawn behind the digits for contrast.</summary>
+    public bool ShowBackground { get; set; } = false;
+
+    /// <summary>Background fill color as RGB hex like "#000000" (alpha comes from <see cref="BackgroundOpacity"/>).</summary>
+    public string BackgroundColorHex { get; set; } = "#000000";
+
+    /// <summary>Background fill opacity 0.0 .. 1.0, applied via the brush alpha channel so the text stays crisp.</summary>
+    public double BackgroundOpacity { get; set; } = 0.5;
+
     public double PosX { get; set; } = 100;
     public double PosY { get; set; } = 100;
 

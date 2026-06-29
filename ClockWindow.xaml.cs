@@ -65,6 +65,7 @@ public partial class ClockWindow : Window
         TimeText.FontFamily = new FontFamily(Settings.FontFamily);
         TimeText.FontWeight = Settings.Bold ? FontWeights.Bold : FontWeights.Normal;
         TimeText.Foreground = new SolidColorBrush(ParseColor(Settings.ColorHex));
+        BackgroundBorder.Background = BuildBackgroundBrush();
         Opacity = Settings.Opacity;
 
         Left = Settings.PosX;
@@ -117,6 +118,20 @@ public partial class ClockWindow : Window
         {
             return TimeZoneInfo.Local;
         }
+    }
+
+    /// <summary>
+    /// Builds the panel brush behind the digits. Opacity rides on the alpha channel
+    /// (not Border.Opacity) so the text and its shadow stay fully crisp.
+    /// </summary>
+    private SolidColorBrush BuildBackgroundBrush()
+    {
+        if (!Settings.ShowBackground)
+            return new SolidColorBrush(Colors.Transparent);
+
+        var rgb = ParseColor(Settings.BackgroundColorHex);
+        var alpha = (byte)Math.Round(Math.Clamp(Settings.BackgroundOpacity, 0.0, 1.0) * 255);
+        return new SolidColorBrush(Color.FromArgb(alpha, rgb.R, rgb.G, rgb.B));
     }
 
     private static Color ParseColor(string hex)

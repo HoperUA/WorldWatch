@@ -39,6 +39,8 @@ public partial class SettingsWindow : Window
 
         SizeSlider.Value = settings.FontSize;
         OpacitySlider.Value = settings.Opacity;
+        BackgroundOpacitySlider.Value = settings.BackgroundOpacity;
+        BackgroundCheck.IsChecked = settings.ShowBackground;
         Use24Check.IsChecked = settings.Use24Hour;
         SecondsCheck.IsChecked = settings.ShowSeconds;
         BoldCheck.IsChecked = settings.Bold;
@@ -110,6 +112,15 @@ public partial class SettingsWindow : Window
         _onChanged();
     }
 
+    private void BackgroundOpacitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_loading)
+            return;
+
+        _settings.BackgroundOpacity = e.NewValue;
+        _onChanged();
+    }
+
     private void Toggle_Click(object sender, RoutedEventArgs e)
     {
         if (_loading)
@@ -120,6 +131,7 @@ public partial class SettingsWindow : Window
         _settings.Bold = BoldCheck.IsChecked == true;
         _settings.LockPosition = LockCheck.IsChecked == true;
         _settings.ShowLabel = LabelCheck.IsChecked == true;
+        _settings.ShowBackground = BackgroundCheck.IsChecked == true;
         _onChanged();
     }
 
@@ -143,6 +155,21 @@ public partial class SettingsWindow : Window
         {
             var c = dialog.Color;
             _settings.ColorHex = $"#FF{c.R:X2}{c.G:X2}{c.B:X2}";
+            _onChanged();
+        }
+    }
+
+    private void BackgroundColorButton_Click(object sender, RoutedEventArgs e)
+    {
+        using var dialog = new WinFormsColorDialog { FullOpen = true };
+
+        var current = ToWpfColor(_settings.BackgroundColorHex);
+        dialog.Color = System.Drawing.Color.FromArgb(current.R, current.G, current.B);
+
+        if (dialog.ShowDialog() == WinFormsDialogResult.OK)
+        {
+            var c = dialog.Color;
+            _settings.BackgroundColorHex = $"#{c.R:X2}{c.G:X2}{c.B:X2}";
             _onChanged();
         }
     }

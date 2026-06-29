@@ -22,7 +22,7 @@
     </Window.ContextMenu>
 
     <!-- Transparent padding so the drop shadow is never clipped by the window edge. -->
-    <Border Background="Transparent" Padding="6">
+    <Border x:Name="BackgroundBorder" Background="Transparent" CornerRadius="4" Padding="6">
         <TextBlock x:Name="TimeText"
                    Text="00:00:00"
                    FontFamily="Consolas"
