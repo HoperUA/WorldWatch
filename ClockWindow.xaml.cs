@@ -39,21 +39,44 @@ public partial class ClockWindow : Window
     private const int WS_EX_TOOLWINDOW = 0x00000080; // keeps the window out of Alt+Tab and the taskbar
     private const int WS_EX_APPWINDOW = 0x00040000;
 
+    private static readonly IntPtr HWND_TOPMOST = new(-1);
+    private const uint SWP_NOMOVE = 0x0002;
+    private const uint SWP_NOSIZE = 0x0001;
+    private const uint SWP_NOACTIVATE = 0x0010;
+
     [DllImport("user32.dll", SetLastError = true)]
     private static extern int GetWindowLong(IntPtr hwnd, int index);
 
     [DllImport("user32.dll")]
     private static extern int SetWindowLong(IntPtr hwnd, int index, int newStyle);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(IntPtr hwnd, IntPtr hwndInsertAfter, int x, int y, int cx, int cy, uint flags);
+
+    private IntPtr _hwnd;
+
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
 
         // Mark as a tool window so it never appears in the Alt+Tab switcher.
-        var hwnd = new WindowInteropHelper(this).Handle;
-        int ex = GetWindowLong(hwnd, GWL_EXSTYLE);
+        _hwnd = new WindowInteropHelper(this).Handle;
+        int ex = GetWindowLong(_hwnd, GWL_EXSTYLE);
         ex = (ex | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW;
-        SetWindowLong(hwnd, GWL_EXSTYLE, ex);
+        SetWindowLong(_hwnd, GWL_EXSTYLE, ex);
+
+        KeepOnTop();
+    }
+
+    /// <summary>
+    /// Re-asserts HWND_TOPMOST at the Win32 level. WPF's Topmost property alone can lose
+    /// the z-order race (taskbar auto-hide flicker, explorer.exe restarting, a fullscreen
+    /// app briefly grabbing the topmost band), so the app timer calls this every tick.
+    /// </summary>
+    public void KeepOnTop()
+    {
+        if (_hwnd != IntPtr.Zero)
+            SetWindowPos(_hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     }
 
     /// <summary>Re-reads appearance + time zone from <see cref="Settings"/> (after edits).</summary>

@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
 using WorldWatch.Models;
@@ -9,14 +10,26 @@ namespace WorldWatch;
 
 public partial class App : System.Windows.Application
 {
+    // Fixed GUID so the mutex name can never collide with an unrelated app.
+    private const string SingleInstanceMutexName = "WorldWatch-8f2b6e0a-3a4e-4c8a-9a4b-6a1f7a0c9e2d";
+
     private AppSettings _settings = null!;
     private readonly List<ClockWindow> _clocks = new();
     private DispatcherTimer _timer = null!;
     private WinFormsApp.NotifyIcon _tray = null!;
+    private Mutex? _singleInstanceMutex;
 
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        _singleInstanceMutex = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out bool createdNew);
+        if (!createdNew)
+        {
+            // Another instance already owns the mutex; nothing left to initialize.
+            Shutdown();
+            return;
+        }
 
         _settings = SettingsStore.Load();
 
@@ -39,7 +52,10 @@ public partial class App : System.Windows.Application
         foreach (var clock in _clocks)
         {
             if (clock.Settings.Visible)
+            {
                 clock.UpdateTime(utcNow);
+                clock.KeepOnTop();
+            }
         }
     }
 
@@ -218,7 +234,10 @@ public partial class App : System.Windows.Application
     protected override void OnExit(ExitEventArgs e)
     {
         _tray?.Dispose();
-        SettingsStore.Save(_settings);
+        if (_settings is not null)
+            SettingsStore.Save(_settings);
+        _singleInstanceMutex?.ReleaseMutex();
+        _singleInstanceMutex?.Dispose();
         base.OnExit(e);
     }
 }
