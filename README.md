@@ -35,7 +35,7 @@
 Клонувати й запустити з вихідного коду:
 
 ```bash
-git clone https://github.com/hoperswork-prog/WorldWatch.git
+git clone https://github.com/HoperUA/WorldWatch.git
 cd WorldWatch
 dotnet run
 ```
@@ -48,7 +48,7 @@ dotnet build -c Release
 
 ## Standalone .exe (без встановленого .NET)
 
-Скачати .exe з GitHub https://github.com/hoperswork-prog/WorldWatch/releases
+Скачати .exe з GitHub https://github.com/HoperUA/WorldWatch/releases
 
 Зібрати один самодостатній виконуваний файл:
 
