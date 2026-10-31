@@ -47,6 +47,7 @@ public partial class SettingsWindow : Window
         LockCheck.IsChecked = settings.LockPosition;
         LabelCheck.IsChecked = settings.ShowLabel;
         LabelText.Text = settings.Label;
+        DateFormatText.Text = settings.DateFormat;
 
         _loading = false;
     }
@@ -142,6 +143,28 @@ public partial class SettingsWindow : Window
 
         _settings.Label = LabelText.Text;
         _onChanged();
+    }
+
+    private void DateFormatText_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        DatePreview.Text = ClockWindow.FormatDate(ClockNow(), DateFormatText.Text);
+        if (_loading)
+            return;
+
+        _settings.DateFormat = DateFormatText.Text;
+        _onChanged();
+    }
+
+    private DateTime ClockNow()
+    {
+        try
+        {
+            return TimeZoneInfo.ConvertTimeBySystemTimeZoneId(DateTime.UtcNow, _settings.TimeZoneId);
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return DateTime.Now;
+        }
     }
 
     private void ColorButton_Click(object sender, RoutedEventArgs e)

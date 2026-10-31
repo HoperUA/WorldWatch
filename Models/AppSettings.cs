@@ -7,6 +7,9 @@ public class AppSettings
 
     public bool StartWithWindows { get; set; } = false;
 
+    /// <summary>When true the visible clocks are shown as one compact block on the taskbar instead of as overlays.</summary>
+    public bool TaskbarMode { get; set; } = false;
+
     /// <summary>Builds the first-run defaults: New York + Ukraine, stacked bottom-right.</summary>
     public static AppSettings CreateDefault()
     {

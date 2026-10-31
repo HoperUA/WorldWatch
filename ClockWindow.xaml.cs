@@ -1,9 +1,10 @@
-using System.Runtime.InteropServices;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using WorldWatch.Models;
+using WorldWatch.Services;
 using Color = System.Windows.Media.Color;
 using FontFamily = System.Windows.Media.FontFamily;
 using ColorConverter = System.Windows.Media.ColorConverter;
@@ -35,36 +36,14 @@ public partial class ClockWindow : Window
         ApplySettings();
     }
 
-    private const int GWL_EXSTYLE = -20;
-    private const int WS_EX_TOOLWINDOW = 0x00000080; // keeps the window out of Alt+Tab and the taskbar
-    private const int WS_EX_APPWINDOW = 0x00040000;
-
-    private static readonly IntPtr HWND_TOPMOST = new(-1);
-    private const uint SWP_NOMOVE = 0x0002;
-    private const uint SWP_NOSIZE = 0x0001;
-    private const uint SWP_NOACTIVATE = 0x0010;
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern int GetWindowLong(IntPtr hwnd, int index);
-
-    [DllImport("user32.dll")]
-    private static extern int SetWindowLong(IntPtr hwnd, int index, int newStyle);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool SetWindowPos(IntPtr hwnd, IntPtr hwndInsertAfter, int x, int y, int cx, int cy, uint flags);
-
     private IntPtr _hwnd;
 
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
 
-        // Mark as a tool window so it never appears in the Alt+Tab switcher.
         _hwnd = new WindowInteropHelper(this).Handle;
-        int ex = GetWindowLong(_hwnd, GWL_EXSTYLE);
-        ex = (ex | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW;
-        SetWindowLong(_hwnd, GWL_EXSTYLE, ex);
-
+        NativeMethods.SetToolWindowStyle(_hwnd);
         KeepOnTop();
     }
 
@@ -76,7 +55,7 @@ public partial class ClockWindow : Window
     public void KeepOnTop()
     {
         if (_hwnd != IntPtr.Zero)
-            SetWindowPos(_hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            NativeMethods.MakeTopmost(_hwnd);
     }
 
     /// <summary>Re-reads appearance + time zone from <see cref="Settings"/> (after edits).</summary>
@@ -100,8 +79,14 @@ public partial class ClockWindow : Window
     /// <summary>Formats <paramref name="utcNow"/> for this window's zone and shows it.</summary>
     public void UpdateTime(DateTime utcNow)
     {
-        var local = TimeZoneInfo.ConvertTimeFromUtc(utcNow, _tz);
+        var time = FormatTime(utcNow);
+        TimeText.Text = Settings.ShowLabel && !string.IsNullOrWhiteSpace(Settings.Label)
+            ? $"{Settings.Label} {time}"
+            : time;
+    }
 
+    public string FormatTime(DateTime utcNow)
+    {
         string format = (Settings.Use24Hour, Settings.ShowSeconds) switch
         {
             (true, true) => "HH:mm:ss",
@@ -110,10 +95,38 @@ public partial class ClockWindow : Window
             (false, false) => "h:mm tt",
         };
 
-        var time = local.ToString(format);
-        TimeText.Text = Settings.ShowLabel && !string.IsNullOrWhiteSpace(Settings.Label)
-            ? $"{Settings.Label} {time}"
-            : time;
+        return TimeZoneInfo.ConvertTimeFromUtc(utcNow, _tz).ToString(format);
+    }
+
+    public string FormatDate(DateTime utcNow) =>
+        FormatDate(TimeZoneInfo.ConvertTimeFromUtc(utcNow, _tz), Settings.DateFormat);
+
+    /// <summary>Empty format means no date; an invalid one is echoed back so the user sees what to fix.</summary>
+    public static string FormatDate(DateTime local, string format)
+    {
+        if (string.IsNullOrWhiteSpace(format))
+            return "";
+
+        try
+        {
+            return local.ToString(format, CultureInfo.InvariantCulture);
+        }
+        catch (FormatException)
+        {
+            return format;
+        }
+    }
+
+    /// <summary>The user's label, or the current UTC offset (e.g. "UTC-4") when none is set.</summary>
+    public string ShortLabel(DateTime utcNow)
+    {
+        if (!string.IsNullOrWhiteSpace(Settings.Label))
+            return Settings.Label;
+
+        var offset = _tz.GetUtcOffset(utcNow);
+        var sign = offset < TimeSpan.Zero ? "-" : "+";
+        var abs = offset.Duration();
+        return abs.Minutes == 0 ? $"UTC{sign}{abs.Hours}" : $"UTC{sign}{abs.Hours}:{abs.Minutes:00}";
     }
 
     private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)

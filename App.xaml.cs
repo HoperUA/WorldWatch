@@ -17,6 +17,7 @@ public partial class App : System.Windows.Application
     private readonly List<ClockWindow> _clocks = new();
     private DispatcherTimer _timer = null!;
     private WinFormsApp.NotifyIcon _tray = null!;
+    private TaskbarClockWindow _taskbarClock = null!;
     private Mutex? _singleInstanceMutex;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -32,23 +33,30 @@ public partial class App : System.Windows.Application
         }
 
         _settings = SettingsStore.Load();
+        _taskbarClock = new TaskbarClockWindow();
 
         foreach (var clockSettings in _settings.Clocks)
             CreateClockWindow(clockSettings);
+        ApplyDisplayMode();
 
-        // One shared timer drives every overlay; 250ms keeps the seconds digit honest
-        // without the cost of a per-window timer.
+        // One shared timer drives every overlay and the taskbar block; 250ms keeps the
+        // seconds digit honest without the cost of a per-window timer.
         _timer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(250) };
         _timer.Tick += (_, _) => Tick();
         _timer.Start();
 
         SetupTray();
-        Tick();
     }
 
     private void Tick()
     {
         var utcNow = DateTime.UtcNow;
+        if (_settings.TaskbarMode)
+        {
+            TickTaskbar(utcNow);
+            return;
+        }
+
         foreach (var clock in _clocks)
         {
             if (clock.Settings.Visible)
@@ -59,16 +67,45 @@ public partial class App : System.Windows.Application
         }
     }
 
+    private void TickTaskbar(DateTime utcNow)
+    {
+        var visible = _clocks.Where(c => c.Settings.Visible).ToList();
+        if (visible.Count == 0 || TaskbarClockWindow.IsFullscreenAppActive())
+        {
+            if (_taskbarClock.IsVisible)
+                _taskbarClock.Hide();
+            return;
+        }
+
+        _taskbarClock.UpdateTime(utcNow, visible);
+        if (!_taskbarClock.IsVisible)
+            _taskbarClock.Show();
+        _taskbarClock.Dock();
+    }
+
+    /// <summary>Shows either the visible overlays or the taskbar block, never both.</summary>
+    private void ApplyDisplayMode()
+    {
+        foreach (var clock in _clocks)
+        {
+            if (!_settings.TaskbarMode && clock.Settings.Visible)
+                clock.Show();
+            else
+                clock.Hide();
+        }
+
+        if (!_settings.TaskbarMode)
+            _taskbarClock.Hide();
+
+        Tick();
+    }
+
     private ClockWindow CreateClockWindow(ClockSettings settings)
     {
         var window = new ClockWindow(settings);
         window.PositionChanged += () => SettingsStore.Save(_settings);
         window.SettingsRequested += () => OpenSettings(window);
         _clocks.Add(window);
-
-        if (settings.Visible)
-            window.Show();
-
         return window;
     }
 
@@ -91,6 +128,7 @@ public partial class App : System.Windows.Application
         _settings.Clocks.Remove(window.Settings);
         _clocks.Remove(window);
         window.Close();
+        ApplyDisplayMode();
         SettingsStore.Save(_settings);
         RebuildMenu();
     }
@@ -100,6 +138,7 @@ public partial class App : System.Windows.Application
         var settings = new ClockSettings { PosX = 200, PosY = 200 };
         _settings.Clocks.Add(settings);
         var window = CreateClockWindow(settings);
+        ApplyDisplayMode();
         SettingsStore.Save(_settings);
         RebuildMenu();
         OpenSettings(window); // let the user pick the zone right away
@@ -108,16 +147,7 @@ public partial class App : System.Windows.Application
     private void SetVisible(ClockWindow window, bool visible)
     {
         window.Settings.Visible = visible;
-        if (visible)
-        {
-            window.Show();
-            window.UpdateTime(DateTime.UtcNow);
-        }
-        else
-        {
-            window.Hide();
-        }
-
+        ApplyDisplayMode();
         SettingsStore.Save(_settings);
     }
 
@@ -130,12 +160,14 @@ public partial class App : System.Windows.Application
             Visible = true,
         };
 
-        // Double-click toggles all overlays on/off at once.
+        // Double-click toggles all clocks on/off at once.
         _tray.DoubleClick += (_, _) =>
         {
             bool anyVisible = _clocks.Any(c => c.Settings.Visible);
             foreach (var clock in _clocks)
-                SetVisible(clock, !anyVisible);
+                clock.Settings.Visible = !anyVisible;
+            ApplyDisplayMode();
+            SettingsStore.Save(_settings);
             RebuildMenu();
         };
 
@@ -171,6 +203,19 @@ public partial class App : System.Windows.Application
         }
 
         menu.Items.Add(new WinFormsApp.ToolStripSeparator());
+
+        var taskbarItem = new WinFormsApp.ToolStripMenuItem("На панелі задач")
+        {
+            Checked = _settings.TaskbarMode,
+            CheckOnClick = true,
+        };
+        taskbarItem.Click += (_, _) =>
+        {
+            _settings.TaskbarMode = taskbarItem.Checked;
+            ApplyDisplayMode();
+            SettingsStore.Save(_settings);
+        };
+        menu.Items.Add(taskbarItem);
 
         var addItem = new WinFormsApp.ToolStripMenuItem("Додати годинник…");
         addItem.Click += (_, _) => AddClock();

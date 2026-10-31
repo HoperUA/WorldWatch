@@ -40,6 +40,9 @@ public class ClockSettings
     public string Label { get; set; } = "";
     public bool ShowLabel { get; set; } = false;
 
+    /// <summary>.NET custom date format for the taskbar block, e.g. "yyyy-MM-dd"; empty hides the date.</summary>
+    public string DateFormat { get; set; } = "yyyy-MM-dd";
+
     public string FontFamily { get; set; } = "Consolas";
 
     /// <summary>When true the window cannot be dragged (prevents accidental moves).</summary>

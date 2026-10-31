@@ -26,6 +26,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <TextBlock Grid.Row="0" Grid.Column="0" Text="Часовий пояс" VerticalAlignment="Center" Margin="0,0,10,8" />
@@ -72,16 +73,24 @@
                       TextChanged="LabelText_TextChanged" />
         </StackPanel>
 
+        <TextBlock Grid.Row="9" Grid.Column="0" Text="Формат дати" VerticalAlignment="Center" Margin="0,0,10,8" />
         <StackPanel Grid.Row="9" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,8">
+            <TextBox  x:Name="DateFormatText" Width="120" VerticalAlignment="Center"
+                      ToolTip="yyyy-MM-dd (ISO) або, наприклад, dd.MM.yyyy. Порожньо: без дати."
+                      TextChanged="DateFormatText_TextChanged" />
+            <TextBlock x:Name="DatePreview" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="Gray" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="10" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,8">
             <CheckBox x:Name="Use24Check" Content="24 год" Margin="0,0,14,0" Click="Toggle_Click" />
             <CheckBox x:Name="SecondsCheck" Content="Секунди" Margin="0,0,14,0" Click="Toggle_Click" />
             <CheckBox x:Name="BoldCheck" Content="Жирний" Click="Toggle_Click" />
         </StackPanel>
 
-        <CheckBox  Grid.Row="10" Grid.Column="1" x:Name="LockCheck" Content="Зафіксувати позицію"
+        <CheckBox  Grid.Row="11" Grid.Column="1" x:Name="LockCheck" Content="Зафіксувати позицію"
                    Margin="0,0,0,12" Click="Toggle_Click" />
 
-        <StackPanel Grid.Row="11" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+        <StackPanel Grid.Row="12" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button x:Name="DeleteButton" Content="Видалити" Margin="0,0,8,0" Padding="10,4"
                     Foreground="DarkRed" Click="DeleteButton_Click" />
             <Button x:Name="CloseButton" Content="Закрити" Padding="10,4" Click="CloseButton_Click" />
