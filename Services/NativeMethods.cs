@@ -55,6 +55,9 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern bool UnhookWinEvent(IntPtr hook);
 
+    [DllImport("user32.dll")]
+    public static extern uint GetDpiForWindow(IntPtr hwnd);
+
     [DllImport("shell32.dll")]
     public static extern int SHQueryUserNotificationState(out int state);
 

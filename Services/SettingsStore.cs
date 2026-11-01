@@ -23,7 +23,10 @@ public static class SettingsStore
                 var json = File.ReadAllText(FilePath);
                 var settings = JsonSerializer.Deserialize<AppSettings>(json);
                 if (settings is { Clocks.Count: > 0 })
+                {
+                    settings.TaskbarMonitors ??= new();
                     return settings;
+                }
             }
         }
         catch

@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
+using Microsoft.Win32;
 using WorldWatch.Models;
 using WorldWatch.Services;
 using WinFormsApp = System.Windows.Forms;
@@ -17,7 +18,7 @@ public partial class App : System.Windows.Application
     private readonly List<ClockWindow> _clocks = new();
     private DispatcherTimer _timer = null!;
     private WinFormsApp.NotifyIcon _tray = null!;
-    private TaskbarClockWindow _taskbarClock = null!;
+    private readonly List<TaskbarClockWindow> _taskbarClocks = new();
     private Mutex? _singleInstanceMutex;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -33,7 +34,7 @@ public partial class App : System.Windows.Application
         }
 
         _settings = SettingsStore.Load();
-        _taskbarClock = new TaskbarClockWindow();
+        RebuildTaskbarClocks();
 
         foreach (var clockSettings in _settings.Clocks)
             CreateClockWindow(clockSettings);
@@ -45,6 +46,7 @@ public partial class App : System.Windows.Application
         _timer.Tick += (_, _) => Tick();
         _timer.Start();
 
+        SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
         SetupTray();
     }
 
@@ -70,17 +72,71 @@ public partial class App : System.Windows.Application
     private void TickTaskbar(DateTime utcNow)
     {
         var visible = _clocks.Where(c => c.Settings.Visible).ToList();
-        if (visible.Count == 0 || TaskbarClockWindow.IsFullscreenAppActive())
+        bool hideAll = visible.Count == 0 || TaskbarClockWindow.IsFullscreenAppActive();
+
+        foreach (var block in _taskbarClocks)
         {
-            if (_taskbarClock.IsVisible)
-                _taskbarClock.Hide();
-            return;
+            if (hideAll || !block.HasTaskbar())
+            {
+                if (block.IsVisible)
+                    block.Hide();
+                continue;
+            }
+
+            block.UpdateTime(utcNow, visible);
+            if (!block.IsVisible)
+                block.Show();
+            block.Dock();
+        }
+    }
+
+    /// <summary>One block per selected monitor that is currently connected; the primary monitor when none is.</summary>
+    private void RebuildTaskbarClocks()
+    {
+        var targets = WinFormsApp.Screen.AllScreens
+            .Select(s => s.DeviceName)
+            .Where(_settings.TaskbarMonitors.Contains)
+            .ToList();
+        if (targets.Count == 0 && WinFormsApp.Screen.PrimaryScreen is { } primary)
+            targets.Add(primary.DeviceName);
+
+        foreach (var block in _taskbarClocks.Where(b => !targets.Contains(b.DeviceName)).ToList())
+        {
+            block.Close();
+            _taskbarClocks.Remove(block);
         }
 
-        _taskbarClock.UpdateTime(utcNow, visible);
-        if (!_taskbarClock.IsVisible)
-            _taskbarClock.Show();
-        _taskbarClock.Dock();
+        foreach (var deviceName in targets.Where(d => _taskbarClocks.All(b => b.DeviceName != d)))
+            _taskbarClocks.Add(new TaskbarClockWindow(deviceName));
+    }
+
+    private void OnDisplaySettingsChanged(object? sender, EventArgs e)
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            RebuildTaskbarClocks();
+            Tick();
+            RebuildMenu();
+        });
+    }
+
+    private void SetTaskbarMonitor(string deviceName, bool selected)
+    {
+        // A primary-monitor fallback block is not in the list yet, so materialize what is shown before editing.
+        foreach (var shown in _taskbarClocks.Select(b => b.DeviceName))
+        {
+            if (!_settings.TaskbarMonitors.Contains(shown))
+                _settings.TaskbarMonitors.Add(shown);
+        }
+
+        _settings.TaskbarMonitors.Remove(deviceName);
+        if (selected)
+            _settings.TaskbarMonitors.Add(deviceName);
+
+        RebuildTaskbarClocks();
+        Tick();
+        SettingsStore.Save(_settings);
+        RebuildMenu();
     }
 
     /// <summary>Shows either the visible overlays or the taskbar block, never both.</summary>
@@ -95,7 +151,10 @@ public partial class App : System.Windows.Application
         }
 
         if (!_settings.TaskbarMode)
-            _taskbarClock.Hide();
+        {
+            foreach (var block in _taskbarClocks)
+                block.Hide();
+        }
 
         Tick();
     }
@@ -216,6 +275,7 @@ public partial class App : System.Windows.Application
             SettingsStore.Save(_settings);
         };
         menu.Items.Add(taskbarItem);
+        menu.Items.Add(BuildTaskbarMonitorsMenu());
 
         var addItem = new WinFormsApp.ToolStripMenuItem("Додати годинник…");
         addItem.Click += (_, _) => AddClock();
@@ -241,6 +301,28 @@ public partial class App : System.Windows.Application
         menu.Items.Add(exitItem);
 
         _tray.ContextMenuStrip = menu;
+    }
+
+    private WinFormsApp.ToolStripMenuItem BuildTaskbarMonitorsMenu()
+    {
+        var monitorsMenu = new WinFormsApp.ToolStripMenuItem("Монітори панелі задач");
+        var shown = _taskbarClocks.Select(b => b.DeviceName).ToHashSet();
+
+        foreach (var screen in WinFormsApp.Screen.AllScreens.OrderBy(s => s.Bounds.X).ThenBy(s => s.Bounds.Y))
+        {
+            var name = screen.DeviceName.TrimStart('\\', '.');
+            var text = $"{name}  {screen.Bounds.Width}×{screen.Bounds.Height}" + (screen.Primary ? "  (основний)" : "");
+            var item = new WinFormsApp.ToolStripMenuItem(text)
+            {
+                Checked = shown.Contains(screen.DeviceName),
+                CheckOnClick = true,
+            };
+            var deviceName = screen.DeviceName;
+            item.Click += (_, _) => SetTaskbarMonitor(deviceName, item.Checked);
+            monitorsMenu.DropDownItems.Add(item);
+        }
+
+        return monitorsMenu;
     }
 
     /// <summary>Friendly label for the tray submenu, e.g. "(UTC-05:00) Eastern Time".</summary>
@@ -278,6 +360,7 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         _tray?.Dispose();
         if (_settings is not null)
             SettingsStore.Save(_settings);

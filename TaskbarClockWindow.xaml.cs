@@ -9,11 +9,17 @@ using HorizontalAlignment = System.Windows.HorizontalAlignment;
 
 namespace WorldWatch;
 
-/// <summary>Compact multi-zone block docked on the taskbar just left of the notification area.</summary>
+/// <summary>Compact multi-zone block docked on one monitor's taskbar just left of its notification area.</summary>
 public partial class TaskbarClockWindow : Window
 {
     private const double LineFontSize = 12;
     private const int GapPx = 4;
+
+    // Secondary taskbars expose no tray HWND; at 100% their right edge holds only the 32px notification
+    // button with a 12px margin (the system clock is not shown there by default).
+    private const int SecondaryTrayWidthAt96Dpi = 44;
+
+    public string DeviceName { get; }
 
     private IntPtr _hwnd;
     private IntPtr _taskbar;
@@ -23,8 +29,9 @@ public partial class TaskbarClockWindow : Window
     private readonly List<(TextBlock Label, TextBlock Date, TextBlock Time)> _lines = new();
     private SolidColorBrush _foreground = ThemeForeground();
 
-    public TaskbarClockWindow()
+    public TaskbarClockWindow(string deviceName)
     {
+        DeviceName = deviceName;
         InitializeComponent();
 
         // Off-screen until the first Dock(), so the initial Show() does not flash at the OS default spot.
@@ -102,28 +109,67 @@ public partial class TaskbarClockWindow : Window
         // SizeToContent resizes the HWND only on a layout pass; without this the width is one text change behind.
         UpdateLayout();
 
-        if (!TryGetTaskbarRects(out var bar, out var notify) || !GetWindowRect(_hwnd, out var self))
+        if (!TryGetAnchor(out var bar, out int anchorX) || !GetWindowRect(_hwnd, out var self))
             return;
 
         int width = self.Right - self.Left;
         int height = self.Bottom - self.Top;
-        int x = notify.Left - width - GapPx;
+        int x = anchorX - width - GapPx;
         int y = bar.Top + (bar.Bottom - bar.Top - height) / 2;
 
         SetWindowPos(_hwnd, HWND_TOPMOST, x, y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
     }
 
+    /// <summary>False when this monitor currently has no taskbar (e.g. "show taskbar on all displays" is off).</summary>
+    public bool HasTaskbar() => TryGetAnchor(out _, out _);
+
     /// <summary>Uses cached shell handles and re-resolves them once if explorer.exe was restarted.</summary>
-    private bool TryGetTaskbarRects(out RECT bar, out RECT notify)
+    private bool TryGetAnchor(out RECT bar, out int anchorX)
     {
-        if (GetWindowRect(_taskbar, out bar) && GetWindowRect(_tray, out notify))
+        if (TryReadAnchor(out bar, out anchorX))
             return true;
 
-        _taskbar = FindWindow("Shell_TrayWnd", null);
+        _taskbar = FindTaskbar(DeviceName);
         _tray = _taskbar == IntPtr.Zero ? IntPtr.Zero : FindWindowEx(_taskbar, IntPtr.Zero, "TrayNotifyWnd", null);
-        notify = default;
-        return GetWindowRect(_taskbar, out bar) && GetWindowRect(_tray, out notify);
+        return TryReadAnchor(out bar, out anchorX);
     }
+
+    private bool TryReadAnchor(out RECT bar, out int anchorX)
+    {
+        anchorX = 0;
+        // Explorer reassigns its taskbar windows to other monitors when the primary display changes.
+        if (!GetWindowRect(_taskbar, out bar) || !IsOnMonitor(_taskbar, DeviceName))
+            return false;
+
+        if (_tray != IntPtr.Zero)
+        {
+            if (!GetWindowRect(_tray, out var notify))
+                return false;
+            anchorX = notify.Left;
+            return true;
+        }
+
+        anchorX = bar.Right - (int)Math.Round(SecondaryTrayWidthAt96Dpi * GetDpiForWindow(_taskbar) / 96.0);
+        return true;
+    }
+
+    private static IntPtr FindTaskbar(string deviceName)
+    {
+        var primary = FindWindow("Shell_TrayWnd", null);
+        if (IsOnMonitor(primary, deviceName))
+            return primary;
+
+        for (var h = FindWindowEx(IntPtr.Zero, IntPtr.Zero, "Shell_SecondaryTrayWnd", null); h != IntPtr.Zero;
+             h = FindWindowEx(IntPtr.Zero, h, "Shell_SecondaryTrayWnd", null))
+        {
+            if (IsOnMonitor(h, deviceName))
+                return h;
+        }
+        return IntPtr.Zero;
+    }
+
+    private static bool IsOnMonitor(IntPtr hwnd, string deviceName) =>
+        hwnd != IntPtr.Zero && System.Windows.Forms.Screen.FromHandle(hwnd).DeviceName == deviceName;
 
     private void EnsureLineCount(int count)
     {

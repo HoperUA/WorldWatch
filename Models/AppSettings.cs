@@ -10,6 +10,9 @@ public class AppSettings
     /// <summary>When true the visible clocks are shown as one compact block on the taskbar instead of as overlays.</summary>
     public bool TaskbarMode { get; set; } = false;
 
+    /// <summary>Device names (e.g. "\\.\DISPLAY2") whose taskbars get the block; empty means the primary monitor only.</summary>
+    public List<string> TaskbarMonitors { get; set; } = new();
+
     /// <summary>Builds the first-run defaults: New York + Ukraine, stacked bottom-right.</summary>
     public static AppSettings CreateDefault()
     {
