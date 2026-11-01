@@ -19,10 +19,6 @@ internal static class NativeMethods
     public const uint WINEVENT_OUTOFCONTEXT = 0x0000;
     public const uint GW_HWNDPREV = 3;
 
-    public const int QUNS_BUSY = 2;
-    public const int QUNS_RUNNING_D3D_FULL_SCREEN = 3;
-    public const int QUNS_PRESENTATION_MODE = 4;
-
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT { public int Left, Top, Right, Bottom; }
 
@@ -58,8 +54,40 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern uint GetDpiForWindow(IntPtr hwnd);
 
-    [DllImport("shell32.dll")]
-    public static extern int SHQueryUserNotificationState(out int state);
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern int GetClassName(IntPtr hwnd, System.Text.StringBuilder className, int maxCount);
+
+    public const uint EDD_GET_DEVICE_INTERFACE_NAME = 0x00000001;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct DISPLAY_DEVICE
+    {
+        public int cb;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string DeviceName;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceString;
+        public int StateFlags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceID;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceKey;
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern bool EnumDisplayDevices(string? device, uint devNum, ref DISPLAY_DEVICE displayDevice, uint flags);
+
+    /// <summary>
+    /// Stable per physical monitor and port (e.g. "\\?\DISPLAY#DELA1C4#...UID4353#{...}"), unlike
+    /// "\\.\DISPLAYn", which Windows can renumber after a reconnect. Falls back to the device name.
+    /// </summary>
+    public static string GetMonitorId(string deviceName)
+    {
+        var device = new DISPLAY_DEVICE { cb = Marshal.SizeOf<DISPLAY_DEVICE>() };
+        return EnumDisplayDevices(deviceName, 0, ref device, EDD_GET_DEVICE_INTERFACE_NAME)
+               && !string.IsNullOrEmpty(device.DeviceID)
+            ? device.DeviceID
+            : deviceName;
+    }
 
     public static void MakeTopmost(IntPtr hwnd) =>
         SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);

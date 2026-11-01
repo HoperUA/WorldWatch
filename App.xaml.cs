@@ -72,30 +72,34 @@ public partial class App : System.Windows.Application
     private void TickTaskbar(DateTime utcNow)
     {
         var visible = _clocks.Where(c => c.Settings.Visible).ToList();
-        bool hideAll = visible.Count == 0 || TaskbarClockWindow.IsFullscreenAppActive();
-
         foreach (var block in _taskbarClocks)
         {
-            if (hideAll || !block.HasTaskbar())
+            bool docked = false;
+            if (visible.Count > 0 && !block.IsFullscreenAppOnMonitor())
             {
-                if (block.IsVisible)
-                    block.Hide();
-                continue;
+                block.UpdateTime(utcNow, visible);
+                docked = block.Dock();
             }
 
-            block.UpdateTime(utcNow, visible);
-            if (!block.IsVisible)
-                block.Show();
-            block.Dock();
+            if (!docked && block.IsVisible)
+                block.Hide();
         }
     }
 
     /// <summary>One block per selected monitor that is currently connected; the primary monitor when none is.</summary>
     private void RebuildTaskbarClocks()
     {
+        var selected = _settings.TaskbarMonitors;
+        foreach (var screen in WinFormsApp.Screen.AllScreens)
+        {
+            // Entries written as "\\.\DISPLAYn" become stable ids while that monitor is connected.
+            if (selected.Remove(screen.DeviceName) && !selected.Contains(NativeMethods.GetMonitorId(screen.DeviceName)))
+                selected.Add(NativeMethods.GetMonitorId(screen.DeviceName));
+        }
+
         var targets = WinFormsApp.Screen.AllScreens
             .Select(s => s.DeviceName)
-            .Where(_settings.TaskbarMonitors.Contains)
+            .Where(d => selected.Contains(NativeMethods.GetMonitorId(d)))
             .ToList();
         if (targets.Count == 0 && WinFormsApp.Screen.PrimaryScreen is { } primary)
             targets.Add(primary.DeviceName);
@@ -123,15 +127,16 @@ public partial class App : System.Windows.Application
     private void SetTaskbarMonitor(string deviceName, bool selected)
     {
         // A primary-monitor fallback block is not in the list yet, so materialize what is shown before editing.
-        foreach (var shown in _taskbarClocks.Select(b => b.DeviceName))
+        foreach (var shown in _taskbarClocks.Select(b => NativeMethods.GetMonitorId(b.DeviceName)))
         {
             if (!_settings.TaskbarMonitors.Contains(shown))
                 _settings.TaskbarMonitors.Add(shown);
         }
 
-        _settings.TaskbarMonitors.Remove(deviceName);
+        var id = NativeMethods.GetMonitorId(deviceName);
+        _settings.TaskbarMonitors.Remove(id);
         if (selected)
-            _settings.TaskbarMonitors.Add(deviceName);
+            _settings.TaskbarMonitors.Add(id);
 
         RebuildTaskbarClocks();
         Tick();
@@ -306,12 +311,23 @@ public partial class App : System.Windows.Application
     private WinFormsApp.ToolStripMenuItem BuildTaskbarMonitorsMenu()
     {
         var monitorsMenu = new WinFormsApp.ToolStripMenuItem("Монітори панелі задач");
+        FillTaskbarMonitorItems(monitorsMenu);
+        // "Show taskbar on all displays" can change without a display-settings event, so refresh on open.
+        monitorsMenu.DropDownOpening += (_, _) => FillTaskbarMonitorItems(monitorsMenu);
+        return monitorsMenu;
+    }
+
+    private void FillTaskbarMonitorItems(WinFormsApp.ToolStripMenuItem monitorsMenu)
+    {
+        monitorsMenu.DropDownItems.Clear();
         var shown = _taskbarClocks.Select(b => b.DeviceName).ToHashSet();
 
         foreach (var screen in WinFormsApp.Screen.AllScreens.OrderBy(s => s.Bounds.X).ThenBy(s => s.Bounds.Y))
         {
             var name = screen.DeviceName.TrimStart('\\', '.');
-            var text = $"{name}  {screen.Bounds.Width}×{screen.Bounds.Height}" + (screen.Primary ? "  (основний)" : "");
+            var text = $"{name}  {screen.Bounds.Width}×{screen.Bounds.Height}"
+                       + (screen.Primary ? "  (основний)" : "")
+                       + (TaskbarClockWindow.HasTaskbarOn(screen.DeviceName) ? "" : "  (немає панелі задач)");
             var item = new WinFormsApp.ToolStripMenuItem(text)
             {
                 Checked = shown.Contains(screen.DeviceName),
@@ -321,8 +337,6 @@ public partial class App : System.Windows.Application
             item.Click += (_, _) => SetTaskbarMonitor(deviceName, item.Checked);
             monitorsMenu.DropDownItems.Add(item);
         }
-
-        return monitorsMenu;
     }
 
     /// <summary>Friendly label for the tray submenu, e.g. "(UTC-05:00) Eastern Time".</summary>

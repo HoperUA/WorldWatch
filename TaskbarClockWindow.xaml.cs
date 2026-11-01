@@ -1,9 +1,13 @@
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 using Microsoft.Win32;
 using static WorldWatch.Services.NativeMethods;
+using Condition = System.Windows.Automation.Condition;
 using FontFamily = System.Windows.Media.FontFamily;
 using HorizontalAlignment = System.Windows.HorizontalAlignment;
 
@@ -15,13 +19,15 @@ public partial class TaskbarClockWindow : Window
     private const double LineFontSize = 12;
     private const int GapPx = 4;
 
-    // Secondary taskbars expose no tray HWND; at 100% their right edge holds only the 32px notification
-    // button with a 12px margin (the system clock is not shown there by default).
-    private const int SecondaryTrayWidthAt96Dpi = 44;
+    // Notification button (32px) plus its 12px edge margin at 100%, used if UI Automation finds nothing.
+    private const int SecondaryTrayFallbackAt96Dpi = 44;
+    private const long SecondaryTrayRefreshMs = 5000;
 
     public string DeviceName { get; }
 
     private IntPtr _hwnd;
+    private int? _secondaryTrayWidth;
+    private long _secondaryTrayMeasuredAt;
     private IntPtr _taskbar;
     private IntPtr _tray;
     private IntPtr _zOrderHook;
@@ -79,10 +85,27 @@ public partial class TaskbarClockWindow : Window
         return false;
     }
 
-    /// <summary>The taskbar is hidden while a fullscreen app, game or presentation is in front.</summary>
-    public static bool IsFullscreenAppActive() =>
-        SHQueryUserNotificationState(out int state) == 0
-        && state is QUNS_BUSY or QUNS_RUNNING_D3D_FULL_SCREEN or QUNS_PRESENTATION_MODE;
+    /// <summary>
+    /// Windows hides a monitor's taskbar while the foreground window covers that whole monitor.
+    /// A maximized window stops at the taskbar, so it does not count.
+    /// </summary>
+    public bool IsFullscreenAppOnMonitor()
+    {
+        var foreground = GetForegroundWindow();
+        if (foreground == IntPtr.Zero || IsDesktop(foreground) || !IsOnMonitor(foreground, DeviceName)
+            || !GetWindowRect(foreground, out var r))
+            return false;
+
+        var bounds = System.Windows.Forms.Screen.FromHandle(foreground).Bounds;
+        return r.Left <= bounds.Left && r.Top <= bounds.Top && r.Right >= bounds.Right && r.Bottom >= bounds.Bottom;
+    }
+
+    private static bool IsDesktop(IntPtr hwnd)
+    {
+        var className = new StringBuilder(32);
+        GetClassName(hwnd, className, className.Capacity);
+        return className.ToString() is "Progman" or "WorkerW";
+    }
 
     public void UpdateTime(DateTime utcNow, IReadOnlyList<ClockWindow> clocks)
     {
@@ -98,19 +121,23 @@ public partial class TaskbarClockWindow : Window
     }
 
     /// <summary>
-    /// Re-anchors the block to the left of TrayNotifyWnd and re-asserts topmost. Works in raw
+    /// Re-anchors the block to the left of the tray area and re-asserts topmost. Works in raw
     /// Win32 pixels end to end so no DIP conversion is needed across monitors with different DPI.
     /// </summary>
-    public void Dock()
+    /// <returns>False when this monitor currently has no taskbar (e.g. "show taskbar on all displays" is off).</returns>
+    public bool Dock()
     {
-        if (_hwnd == IntPtr.Zero)
-            return;
+        if (!TryGetAnchor(out var bar, out int anchorX))
+            return false;
+
+        if (!IsVisible)
+            Show();
 
         // SizeToContent resizes the HWND only on a layout pass; without this the width is one text change behind.
         UpdateLayout();
 
-        if (!TryGetAnchor(out var bar, out int anchorX) || !GetWindowRect(_hwnd, out var self))
-            return;
+        if (!GetWindowRect(_hwnd, out var self))
+            return false;
 
         int width = self.Right - self.Left;
         int height = self.Bottom - self.Top;
@@ -118,10 +145,10 @@ public partial class TaskbarClockWindow : Window
         int y = bar.Top + (bar.Bottom - bar.Top - height) / 2;
 
         SetWindowPos(_hwnd, HWND_TOPMOST, x, y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
+        return true;
     }
 
-    /// <summary>False when this monitor currently has no taskbar (e.g. "show taskbar on all displays" is off).</summary>
-    public bool HasTaskbar() => TryGetAnchor(out _, out _);
+    public static bool HasTaskbarOn(string deviceName) => FindTaskbar(deviceName) != IntPtr.Zero;
 
     /// <summary>Uses cached shell handles and re-resolves them once if explorer.exe was restarted.</summary>
     private bool TryGetAnchor(out RECT bar, out int anchorX)
@@ -131,6 +158,7 @@ public partial class TaskbarClockWindow : Window
 
         _taskbar = FindTaskbar(DeviceName);
         _tray = _taskbar == IntPtr.Zero ? IntPtr.Zero : FindWindowEx(_taskbar, IntPtr.Zero, "TrayNotifyWnd", null);
+        _secondaryTrayWidth = null;
         return TryReadAnchor(out bar, out anchorX);
     }
 
@@ -149,8 +177,45 @@ public partial class TaskbarClockWindow : Window
             return true;
         }
 
-        anchorX = bar.Right - (int)Math.Round(SecondaryTrayWidthAt96Dpi * GetDpiForWindow(_taskbar) / 96.0);
+        anchorX = bar.Right - SecondaryTrayWidth(bar);
         return true;
+    }
+
+    /// <summary>Re-measured every few seconds: a UI Automation walk of explorer is too slow for every tick.</summary>
+    private int SecondaryTrayWidth(RECT bar)
+    {
+        long now = Environment.TickCount64;
+        if (_secondaryTrayWidth is not { } width || now - _secondaryTrayMeasuredAt > SecondaryTrayRefreshMs)
+        {
+            width = MeasureSecondaryTray(bar)
+                    ?? (int)Math.Round(SecondaryTrayFallbackAt96Dpi * GetDpiForWindow(_taskbar) / 96.0);
+            _secondaryTrayWidth = width;
+            _secondaryTrayMeasuredAt = now;
+        }
+        return width;
+    }
+
+    /// <summary>
+    /// Secondary taskbars have no tray HWND; their right-side area (notification button, and the clock
+    /// when Windows shows it there) exists only as XAML elements whose class names start with "SystemTray.".
+    /// </summary>
+    private int? MeasureSecondaryTray(RECT bar)
+    {
+        try
+        {
+            double left = double.MaxValue;
+            var elements = AutomationElement.FromHandle(_taskbar).FindAll(TreeScope.Descendants, Condition.TrueCondition);
+            foreach (AutomationElement element in elements)
+            {
+                if (element.Current.ClassName.StartsWith("SystemTray.", StringComparison.Ordinal))
+                    left = Math.Min(left, element.Current.BoundingRectangle.Left);
+            }
+            return left == double.MaxValue ? null : bar.Right - (int)left;
+        }
+        catch (Exception ex) when (ex is ElementNotAvailableException or COMException)
+        {
+            return null;
+        }
     }
 
     private static IntPtr FindTaskbar(string deviceName)
