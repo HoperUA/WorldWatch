@@ -5,6 +5,7 @@ namespace WorldWatch.Services;
 internal static class NativeMethods
 {
     public const int GWL_EXSTYLE = -20;
+    public const int WS_EX_TOPMOST = 0x00000008;
     public const int WS_EX_TRANSPARENT = 0x00000020;
     public const int WS_EX_TOOLWINDOW = 0x00000080; // keeps the window out of Alt+Tab and the taskbar
     public const int WS_EX_APPWINDOW = 0x00040000;
@@ -91,6 +92,21 @@ internal static class NativeMethods
 
     public static void MakeTopmost(IntPtr hwnd) =>
         SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+
+    public static bool IsTopmost(IntPtr hwnd) => (GetWindowLong(hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
+
+    public static bool IsBelowAnyTaskbar(IntPtr hwnd)
+    {
+        var className = new System.Text.StringBuilder(32);
+        for (var h = GetWindow(hwnd, GW_HWNDPREV); h != IntPtr.Zero; h = GetWindow(h, GW_HWNDPREV))
+        {
+            className.Clear();
+            GetClassName(h, className, className.Capacity);
+            if (className.ToString() is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd")
+                return true;
+        }
+        return false;
+    }
 
     public static void SetToolWindowStyle(IntPtr hwnd, int extraFlags = 0)
     {

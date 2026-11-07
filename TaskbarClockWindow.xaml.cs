@@ -144,7 +144,10 @@ public partial class TaskbarClockWindow : Window
         int x = anchorX - width - GapPx;
         int y = bar.Top + (bar.Bottom - bar.Top - height) / 2;
 
-        SetWindowPos(_hwnd, HWND_TOPMOST, x, y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
+        // SetWindowPos makes Windows synthesize a mouse move that re-shows a pointer hidden while typing,
+        // so it runs only when the block moved, lost topmost or fell below the taskbar.
+        if (self.Left != x || self.Top != y || !IsTopmost(_hwnd) || IsBelowTaskbar())
+            SetWindowPos(_hwnd, HWND_TOPMOST, x, y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
         return true;
     }
 

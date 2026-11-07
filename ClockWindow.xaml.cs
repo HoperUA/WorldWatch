@@ -48,13 +48,13 @@ public partial class ClockWindow : Window
     }
 
     /// <summary>
-    /// Re-asserts HWND_TOPMOST at the Win32 level. WPF's Topmost property alone can lose
-    /// the z-order race (taskbar auto-hide flicker, explorer.exe restarting, a fullscreen
-    /// app briefly grabbing the topmost band), so the app timer calls this every tick.
+    /// Re-asserts HWND_TOPMOST at the Win32 level when the window lost it or a taskbar got above it.
+    /// WPF's Topmost property alone can lose the z-order race (taskbar auto-hide, explorer.exe restarting).
+    /// Not unconditional: SetWindowPos makes Windows synthesize a mouse move that re-shows a pointer hidden while typing.
     /// </summary>
     public void KeepOnTop()
     {
-        if (_hwnd != IntPtr.Zero)
+        if (_hwnd != IntPtr.Zero && (!NativeMethods.IsTopmost(_hwnd) || NativeMethods.IsBelowAnyTaskbar(_hwnd)))
             NativeMethods.MakeTopmost(_hwnd);
     }
 
